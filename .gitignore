@@ -1,0 +1,15 @@
+# Prerequisites
+*.d
+
+# Object files
+*.o
+*.ko
+*.obj
+*.elf
+/Debug/
+
+*.rpm
+/.metadata/
+/Doxygen/html/*
+/Doxygen/latex/*
+/perf.data
