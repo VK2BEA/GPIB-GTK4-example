@@ -26,10 +26,12 @@
  * 2. receive ID string and display it
  *
  */
-gboolean GPIB_device_ID_example(GSource *source, gpointer udata) {
-    tGPIBcontext *pContext = (tGPIBcontext*) ((tGPIBsource *)source)->pContext;
+gboolean GPIB_device_ID_example(GSource *source, gpointer gpGlobalData) {
 
-    gint GPIBdevice = pContext->GPIBdevice;
+    tGlobalData *pGlobalData = (tGlobalData *)gpGlobalData;
+    tGPIBsource *pGPIBsource = (tGPIBsource *)source;
+
+    gint GPIBdevice = pGPIBsource->GPIBdevice;
     gint status = 0;
     gint count = 0;
 
@@ -38,60 +40,60 @@ gboolean GPIB_device_ID_example(GSource *source, gpointer udata) {
     const gchar *sQuery = "ID?;";
 
     // Error
-    if( pContext->eGPIBstate != G_IDLE ) {
+    if( pGPIBsource->eGPIBstate != G_IDLE ) {
 	    status = AsyncIbsta();
 	    count = AsyncIbcnt();
     	// Check for error & act appropriately
 		if (status & ERR) {
 			g_printerr("GPIB Error encountered! (%s)\n", gpib_error_string(iberr));
-			gtk_label_set_text(pContext->wLabel, gpib_error_string(iberr));
-			pContext->eGPIBstate = G_IDLE;
+			notify( pGlobalData, (gchar *)gpib_error_string(iberr));
+			pGPIBsource->eGPIBstate = G_IDLE;
 			return G_SOURCE_CONTINUE;
 		}
 
 		// Check for timeout & act appropriately
-		if (pContext->flags.bTimeout) {
-			gtk_label_set_text(pContext->wLabel, "HP8585A did not respond (timeout)");
-			pContext->eGPIBstate = G_IDLE;
+		if (pGPIBsource->flags.bTimeout) {
+		    notify( pGlobalData,  "HP8585A did not respond (timeout)");
+			pGPIBsource->eGPIBstate = G_IDLE;
 			return G_SOURCE_CONTINUE;
 		}
     }
 
     // State machine for instrument action
-    switch (pContext->eGPIBstate) {
+    switch (pGPIBsource->eGPIBstate) {
     case G_IDLE:
     	// initially this is called by the user program to initiate the sequence
     	// we send the "ID?" string to the instrument.
 
         // Set the callback for the GSource dispatch function to handle the sequence of events:
         // completion of write, the reading of the ID string and display.
-        g_source_set_callback(source, (GSourceFunc) GPIB_device_ID_example, NULL, NULL);
-        ibwrta(pContext->GPIBdevice, sQuery, strlen(sQuery));  // issue the ID? query
-        pContext->ibstaMask = CMPL;				// we wait for either the completion of the write or an error
-        pContext->timeOut = 2.0;        		// 2 second timeout
-        pContext->eGPIBstate = G_01;			// next state of the state machine
+        g_source_set_callback(source, (GSourceFunc) GPIB_device_ID_example, pGlobalData, NULL);
+        ibwrta(pGPIBsource->GPIBdevice, sQuery, strlen(sQuery));  // issue the ID? query
+        pGPIBsource->ibstaMask = CMPL;				// we wait for either the completion of the write or an error
+        pGPIBsource->timeOut = 2.0;        		// 2 second timeout
+        pGPIBsource->eGPIBstate = G_01;			// next state of the state machine
     	break;
     case G_01:
         g_printerr( "Async write complete (%d chars). Initiating async read...\n",
                 count);
         // allocate a buffer for the ID string to hold the data read from the instrument
-        pContext->buffer = g_realloc( pContext->buffer, RD_BUF_SIZE );
-        ibrda(GPIBdevice, pContext->buffer, RD_BUF_SIZE - 1);
-        pContext->eGPIBstate = G_02;      		// the next state of the sequence
+        pGPIBsource->inputBuffer = g_realloc( pGPIBsource->inputBuffer, RD_BUF_SIZE );
+        ibrda(GPIBdevice, pGPIBsource->inputBuffer, RD_BUF_SIZE - 1);
+        pGPIBsource->eGPIBstate = G_02;      		// the next state of the sequence
         break;
     case G_02:
         g_printerr( "Async read complete (0x%04x) (%d chars).\n", status, count );
         // Null-terminate the string (being careful not to write out of bounds)
-        pContext->buffer[ count % RD_BUF_SIZE ] = '\0';
+        pGPIBsource->inputBuffer[ count % RD_BUF_SIZE ] = '\0';
         // some debugging ... show hex on terminal
-        gprint_hex(pContext->buffer, count);
+        gprint_hex(pGPIBsource->inputBuffer, count);
         // Show the ID string returned from instrument on the GUI
-        gtk_label_set_text(pContext->wLabel, pContext->buffer);
-        pContext->eGPIBstate = G_IDLE;			// GSource check function will not look at the GPIB device
+        notify( pGlobalData,  pGPIBsource->inputBuffer);
+        pGPIBsource->eGPIBstate = G_IDLE;			// GSource check function will not look at the GPIB device
         break;
 
     default:
-        pContext->eGPIBstate = G_IDLE;
+        pGPIBsource->eGPIBstate = G_IDLE;
         break;
     }
 
@@ -100,8 +102,8 @@ gboolean GPIB_device_ID_example(GSource *source, gpointer udata) {
     // determines that the condition of ibstat is met.
     // In the mean time the GUI continues processing and is responsive.
 
-    g_timer_start(pContext->timerElapsed);		// reset timeout timer
-    pContext->flags.bTimeout = false;			// we reset the timeout flag
+    g_timer_start(pGPIBsource->timerElapsed);		// reset timeout timer
+    pGPIBsource->flags.bTimeout = false;			// we reset the timeout flag
     return G_SOURCE_CONTINUE;
 }
 
@@ -131,10 +133,12 @@ gboolean GPIB_device_ID_example(GSource *source, gpointer udata) {
  * Bit 6: Not used / Always 0
  * Bit 7: Not used / Always 0
  */
-gboolean GPIB_illegal_cmd_SRQ_example(GSource *source, gpointer udata) {
-    tGPIBcontext *pContext = (tGPIBcontext*) ((tGPIBsource *)source)->pContext;
+gboolean GPIB_illegal_cmd_SRQ_example(GSource *source, gpointer gpGlobalData) {
 
-    gint GPIBdevice = pContext->GPIBdevice;
+    tGlobalData *pGlobalData = (tGlobalData *)gpGlobalData;
+    tGPIBsource *pGPIBsource = (tGPIBsource *)source;
+
+    gint GPIBdevice = pGPIBsource->GPIBdevice;
 
     gint status = 0;
     gint count = 0;
@@ -145,26 +149,26 @@ gboolean GPIB_illegal_cmd_SRQ_example(GSource *source, gpointer udata) {
     gchar statusByte, sString[ 20 ];
 
     // Error (only relevant if we have previously issued a GPIB command)
-    if( pContext->eGPIBstate != G_IDLE ) {
+    if( pGPIBsource->eGPIBstate != G_IDLE ) {
 	    status = AsyncIbsta();
 	    count = AsyncIbcnt();
 
 		if (ibsta & ERR) {
 			g_printerr("GPIB Error encountered! (%s)\n", gpib_error_string(iberr));
-			gtk_label_set_text(pContext->wLabel, gpib_error_string(iberr));
-			pContext->eGPIBstate = G_IDLE;
+			notify( pGlobalData, (gchar *)gpib_error_string(iberr));
+			pGPIBsource->eGPIBstate = G_IDLE;
 			return G_SOURCE_CONTINUE;
 		}
 
-		if (pContext->flags.bTimeout) {
-			gtk_label_set_text(pContext->wLabel, "HP8585A did not respond (timeout)");
-			pContext->eGPIBstate = G_IDLE;
+		if (pGPIBsource->flags.bTimeout) {
+		    notify( pGlobalData, "HP8585A did not respond (timeout)");
+		    pGPIBsource->eGPIBstate = G_IDLE;
 			return G_SOURCE_CONTINUE;
 		}
     }
 
     // State machine for instrument action
-    switch (pContext->eGPIBstate) {
+    switch (pGPIBsource->eGPIBstate) {
     case G_IDLE:
     	// The starting point for the sequence of events
     	// Here, we:
@@ -177,12 +181,12 @@ gboolean GPIB_illegal_cmd_SRQ_example(GSource *source, gpointer udata) {
 
         // Callback to handle the sequence of events: completion of write and the reading
         // of the ID string (this function).
-        g_source_set_callback(source, (GSourceFunc) GPIB_illegal_cmd_SRQ_example, NULL, NULL);
+        g_source_set_callback(source, (GSourceFunc) GPIB_illegal_cmd_SRQ_example, pGlobalData, NULL);
         // issue the ID? query
         ibwrta(GPIBdevice, sIllegalCommand, strlen(sIllegalCommand));
-        pContext->ibstaMask = CMPL;				// we wait for either the completion of the write or an error
-        pContext->timeOut = 2.0;        		// 2 second timeout
-        pContext->eGPIBstate = G_01;			// next state of the state machine
+        pGPIBsource->ibstaMask = CMPL;				// we wait for either the completion of the write or an error
+        pGPIBsource->timeOut = 2.0;        		// 2 second timeout
+        pGPIBsource->eGPIBstate = G_01;			// next state of the state machine
     	break;
     case G_01:
     	// We get here after the previous step if the write completes
@@ -190,20 +194,20 @@ gboolean GPIB_illegal_cmd_SRQ_example(GSource *source, gpointer udata) {
     	// 1. define what bits in the ibsta word we will look for (RQS)
     	// 2. reset the timeout timer (unchanged 2 second timeout)
     	g_printerr( "Async write complete (%d chars). Expecting SRQ...\n", count);
-        pContext->ibstaMask = RQS;				// we wait for RQS
-        pContext->eGPIBstate = G_02;			// next state of the state machine
+    	pGPIBsource->ibstaMask = RQS;				// we wait for RQS
+    	pGPIBsource->eGPIBstate = G_02;			// next state of the state machine
         break;
     case G_02:
     	g_printerr( "SRQ recognized: ibsta (0x%04x) / ", ibsta );
     	ibrsp(GPIBdevice, &statusByte);
         g_printerr( "Device status byte (0x%02x)\n", statusByte );
         g_snprintf( sString, sizeof(sString), "STB 0x%02x", statusByte);
-        gtk_label_set_text(pContext->wLabel, sString);
-        pContext->eGPIBstate = G_IDLE;			// return to idle state
+        notify( pGlobalData, sString);
+        pGPIBsource->eGPIBstate = G_IDLE;			// return to idle state
         break;
 
     default:
-        pContext->eGPIBstate = G_IDLE;
+        pGPIBsource->eGPIBstate = G_IDLE;
         break;
     }
 
@@ -212,7 +216,7 @@ gboolean GPIB_illegal_cmd_SRQ_example(GSource *source, gpointer udata) {
     // determines that the condition of ibstat is met.
     // In the mean time the GUI continues processing and is responsive.
 
-    g_timer_start(pContext->timerElapsed);		// reset timeout timer
-    pContext->flags.bTimeout = false;			// we reset the timeout flag
+    g_timer_start(pGPIBsource->timerElapsed);		// reset timeout timer
+    pGPIBsource->flags.bTimeout = false;			// we reset the timeout flag
     return G_SOURCE_CONTINUE;
 }

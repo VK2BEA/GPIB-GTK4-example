@@ -35,6 +35,9 @@
 
 #include "GPIB_GTK4-demo.h"
 
+// application data etc
+tGlobalData globalData;
+
 static gint     optDebug = 0;
 static gboolean bEOIonLF = true;
 static gint     optDeviceID = 4;
@@ -55,34 +58,32 @@ static const GOptionEntry optionEntries[] =
         { NULL }
 };
 
+void notify( tGlobalData *pGlobalData, gchar *sText ) {
+    gtk_label_set_text(GTK_LABEL(pGlobalData->widgets[W_LBL_NOTE]), sText );
+}
+
 // Callback function triggered when the "ID?" button is clicked
-static void on_btn_click_ID(GtkWidget *button, gpointer udata) {
+static void on_btn_click_ID(GtkWidget *button, gpointer gpGPIBsource) {
     // Cast the uData back to a GtkWidget (the label)
-    tGPIBsource *pGPIBsource = (tGPIBsource*) udata;
-    tGPIBcontext *pContext = pGPIBsource->pContext;
+    tGPIBsource *pGPIBsource = (tGPIBsource*) gpGPIBsource;
 
-    // Ignore button if we are busy
-    if (pContext->eGPIBstate != G_IDLE)
-        return;
+    if( pGPIBsource->eGPIBstate != G_IDLE )
+    	return;
 
-    gtk_label_set_text(GTK_LABEL(pContext->wLabel), "Waiting for ID string");
-    GPIB_device_ID_example((GSource *)pGPIBsource, pContext);
-
+    notify( pGPIBsource->pGlobalData, "Waiting for ID string");
+    GPIB_device_ID_example((GSource *)pGPIBsource, pGPIBsource->pGlobalData);
 }
 
 // Callback function triggered when the "SRQ" button is clicked
-static void on_btn_click_SRQ(GtkWidget *button, gpointer udata) {
+static void on_btn_click_SRQ(GtkWidget *button, gpointer gpGPIBsource) {
     // Cast the uData back to a GtkWidget (the label)
-    tGPIBsource *pGPIBsource = (tGPIBsource*) udata;
-    tGPIBcontext *pContext = pGPIBsource->pContext;
+    tGPIBsource *pGPIBsource = (tGPIBsource*) gpGPIBsource;
 
-    // Ignore button if we are busy
-    if (pContext->eGPIBstate != G_IDLE)
-        return;
+    if( pGPIBsource->eGPIBstate != G_IDLE )
+    	return;
 
-    gtk_label_set_text(GTK_LABEL(pContext->wLabel), "Waiting for SRQ");
-    GPIB_illegal_cmd_SRQ_example((GSource *)pGPIBsource, pContext);
-
+    notify( pGPIBsource->pGlobalData, "Waiting for SRQ");
+    GPIB_illegal_cmd_SRQ_example((GSource *)pGPIBsource, pGPIBsource->pGlobalData);
 }
 
 /* on_shutdown (shutdown signal callback)
@@ -90,24 +91,18 @@ static void on_btn_click_SRQ(GtkWidget *button, gpointer udata) {
  * Cleanup on shutdown
  *
  */
-static void on_shutdown (GApplication *app, gpointer udata)
+static void on_shutdown (GApplication *app, gpointer gpGlobalData)
 {
-    tGPIBcontext *pContext = (tGPIBcontext*) udata;
-    g_timer_destroy(pContext->timerElapsed);
-    g_free( pContext->buffer ); // we malloced this structure, so now dispose of it
-    ibonl(pContext->GPIBdevice, true);
 }
 
-
-
-
 // Function triggered when the application is activated
-static void on_activate(GtkApplication *app, gpointer udata) {
+static void on_activate(GtkApplication *app, gpointer gpGlobalData) {
     GtkWidget *wWindow_Application;
     GtkWidget *wBox;
     GtkWidget *wButton_ID, *wButton_SRQ;
     GtkWidget *wLabel_Notification;
 
+    tGlobalData *pGlobalData = (tGlobalData *)gpGlobalData;
     tGPIBsource *pGPIBsource;
 
     // Create the GUI.
@@ -145,17 +140,22 @@ static void on_activate(GtkApplication *app, gpointer udata) {
 
     // Open the GPIB device and create the GSource to handle the GPIB device
     // within the glib main loop. https://docs.gtk.org/glib/main-loop.html
-    if( (pGPIBsource = openGPIBdevice( &GPIBcontext )) == NULL ) {
+    if( (pGPIBsource = openGPIBdevice( pGlobalData->GPIBcontrollerIdx,
+            pGlobalData->GPIBdevicePID, pGlobalData->flags.bEOIonLF )) == NULL ) {
         g_application_quit(G_APPLICATION(app));
     }
 
-    gchar *sTitle = g_strdup_printf( "🛈 GPIB: %d / PID %d", GPIBcontext.GPIBcontroller, GPIBcontext.GPIBdevice );
+    pGPIBsource->pGlobalData = pGlobalData;
+
+    gchar *sTitle = g_strdup_printf( "🛈 GPIB: %d / PID %d", globalData.GPIBcontrollerIdx, globalData.GPIBdevicePID );
     gtk_window_set_title(GTK_WINDOW(wWindow_Application), sTitle);
     g_free( sTitle );
 
     // Keep a note of the label widget so we can update the text
-    pGPIBsource->pContext->wLabel = GTK_LABEL(wLabel_Notification);
-    pGPIBsource->pContext->app = app;
+    pGlobalData->widgets[ W_BTN_ID ] = GTK_WIDGET( wButton_ID );
+    pGlobalData->widgets[ W_BTN_SRQ ] = GTK_WIDGET( wButton_SRQ );
+    pGlobalData->widgets[ W_LBL_NOTE ] = GTK_WIDGET( wLabel_Notification );
+    pGlobalData->app = app;
 
     // Connect the button's "clicked" signal to our callback functions
     g_signal_connect(wButton_ID, "clicked", G_CALLBACK(on_btn_click_ID), pGPIBsource);
@@ -166,13 +166,12 @@ static void on_activate(GtkApplication *app, gpointer udata) {
 }
 
 static void
-on_startup (GApplication *app, gpointer udata)
+on_startup (GApplication *app, gpointer gpGlobalData)
 {
-    tGPIBcontext *pContext = (tGPIBcontext*) udata;
-
-    pContext->GPIBdevice = optDeviceID;
-    pContext->GPIBcontroller = optControllerIndex;
-    pContext->flags.bEOIonLF = bEOIonLF;
+    tGlobalData *pGlobalData = (tGlobalData *)gpGlobalData;
+    pGlobalData->GPIBdevicePID = optDeviceID;
+    pGlobalData->GPIBcontrollerIdx = optControllerIndex;
+    pGlobalData->flags.bEOIonLF = bEOIonLF;
 }
 
 int main(int argc, char **argv) {
@@ -184,9 +183,9 @@ int main(int argc, char **argv) {
     g_application_add_main_option_entries (G_APPLICATION ( app ), optionEntries);
 
     // Connect the "activate" signal to set up the UI
-    g_signal_connect(app, "startup",  G_CALLBACK  (on_startup), (gpointer)&GPIBcontext);
-    g_signal_connect(app, "activate", G_CALLBACK(on_activate), (gpointer)&GPIBcontext);
-    g_signal_connect(app, "shutdown", G_CALLBACK (on_shutdown), (gpointer)&GPIBcontext);
+    g_signal_connect(app, "startup",  G_CALLBACK  (on_startup), (gpointer)&globalData);
+    g_signal_connect(app, "activate", G_CALLBACK(on_activate), (gpointer)&globalData);
+    g_signal_connect(app, "shutdown", G_CALLBACK (on_shutdown), (gpointer)&globalData);
 
 
     // Run the application (this blocks until the application exits)
