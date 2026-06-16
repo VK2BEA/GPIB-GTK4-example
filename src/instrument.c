@@ -16,14 +16,15 @@
 
 /**
  *
- * We send the initially "ID?" string to the device (HP8595E).
- * We are then called again by the GSource dispatch function when
+ * Initially send the string "ID?" to the device (HP8595E).
+ * This function is then called again by the GSource dispatch function when
  * the defined condition of ibstat is met. (CMPL or ERR)
  *
  * The series of events are executed to achieve the required function.
  * In this example, it is quite simple:
- * 1. send "ID?"
- * 2. receive ID string and display it
+ * 1. send "ID?" with an asynchronous write (ibwrta)
+ * 2. read the reply with an asynchronous read (ibrda)
+ * 3. at EOI or EOS, receive ID string and display it
  *
  */
 gboolean GPIB_device_ID_example(GSource *source, gpointer gpGlobalData) {
