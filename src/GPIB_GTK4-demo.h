@@ -13,22 +13,7 @@
 
 #define RD_BUF_SIZE 1024
 
-typedef struct {
 
-    gint GPIBdevicePID;     // The GPIB device descriptor
-    gint GPIBcontrollerIdx; //
-
-    struct {
-        guint32 bEOIonLF :1;
-    } flags;
-
-    enum { W_LBL_NOTE, W_BTN_ID, W_BTN_SRQ, W_LAST } eWidget;
-    GtkWidget *widgets[ W_LAST ];
-    GtkApplication *app;
-
-} tGlobalData;
-
-extern tGlobalData globalData;
 
 // GSource implementation
 
@@ -56,8 +41,25 @@ typedef struct {
 
     gchar *inputBuffer;
 
-    tGlobalData *pGlobalData;
 } tGPIBsource;
+
+typedef struct {
+
+    gint GPIBdevicePID;     // The GPIB device descriptor
+    gint GPIBcontrollerIdx; //
+
+    struct {
+        guint32 bEOIonLF :1;
+    } flags;
+
+    enum { W_LBL_NOTE, W_BTN_ID, W_BTN_SRQ, W_LAST } eWidget;
+    GtkWidget *widgets[ W_LAST ];
+    GtkApplication *app;
+
+    tGPIBsource *pGPIBsource;
+} tGlobalData;
+
+extern tGlobalData globalData;
 
 // The function signature for our application callbacks
 typedef gboolean (*GPIBsourceFunc)(GSource *, gpointer);

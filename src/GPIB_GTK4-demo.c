@@ -63,27 +63,25 @@ void notify( tGlobalData *pGlobalData, gchar *sText ) {
 }
 
 // Callback function triggered when the "ID?" button is clicked
-static void on_btn_click_ID(GtkWidget *button, gpointer gpGPIBsource) {
-    // Cast the uData back to a GtkWidget (the label)
-    tGPIBsource *pGPIBsource = (tGPIBsource*) gpGPIBsource;
+static void on_btn_click_ID(GtkWidget *button, gpointer gpGlobalData) {
+    tGlobalData *pGlobalData = (tGlobalData*) gpGlobalData;
 
-    if( pGPIBsource->eGPIBstate != G_IDLE )
+    if( pGlobalData->pGPIBsource->eGPIBstate != G_IDLE )
     	return;
 
-    notify( pGPIBsource->pGlobalData, "Waiting for ID string");
-    GPIB_device_ID_example((GSource *)pGPIBsource, pGPIBsource->pGlobalData);
+    notify( pGlobalData, "Waiting for ID string");
+    GPIB_device_ID_example((GSource *)(pGlobalData->pGPIBsource), pGlobalData);
 }
 
 // Callback function triggered when the "SRQ" button is clicked
-static void on_btn_click_SRQ(GtkWidget *button, gpointer gpGPIBsource) {
-    // Cast the uData back to a GtkWidget (the label)
-    tGPIBsource *pGPIBsource = (tGPIBsource*) gpGPIBsource;
+static void on_btn_click_SRQ(GtkWidget *button, gpointer gpGlobalData) {
+    tGlobalData *pGlobalData = (tGlobalData*) gpGlobalData;
 
-    if( pGPIBsource->eGPIBstate != G_IDLE )
-    	return;
+    if( pGlobalData->pGPIBsource->eGPIBstate != G_IDLE )
+        return;
 
-    notify( pGPIBsource->pGlobalData, "Waiting for SRQ");
-    GPIB_illegal_cmd_SRQ_example((GSource *)pGPIBsource, pGPIBsource->pGlobalData);
+    notify( pGlobalData, "Waiting for SRQ");
+    GPIB_illegal_cmd_SRQ_example((GSource *)(pGlobalData->pGPIBsource), pGlobalData);
 }
 
 /* on_shutdown (shutdown signal callback)
@@ -145,21 +143,22 @@ static void on_activate(GtkApplication *app, gpointer gpGlobalData) {
         g_application_quit(G_APPLICATION(app));
     }
 
-    pGPIBsource->pGlobalData = pGlobalData;
+    pGlobalData->pGPIBsource = pGPIBsource;
 
     gchar *sTitle = g_strdup_printf( "🛈 GPIB: %d / PID %d", globalData.GPIBcontrollerIdx, globalData.GPIBdevicePID );
     gtk_window_set_title(GTK_WINDOW(wWindow_Application), sTitle);
     g_free( sTitle );
 
-    // Keep a note of the label widget so we can update the text
+    // Keep a note of the widgets so we use them
     pGlobalData->widgets[ W_BTN_ID ] = GTK_WIDGET( wButton_ID );
     pGlobalData->widgets[ W_BTN_SRQ ] = GTK_WIDGET( wButton_SRQ );
     pGlobalData->widgets[ W_LBL_NOTE ] = GTK_WIDGET( wLabel_Notification );
+
     pGlobalData->app = app;
 
     // Connect the button's "clicked" signal to our callback functions
-    g_signal_connect(wButton_ID, "clicked", G_CALLBACK(on_btn_click_ID), pGPIBsource);
-    g_signal_connect(wButton_SRQ, "clicked", G_CALLBACK(on_btn_click_SRQ), pGPIBsource);
+    g_signal_connect(wButton_ID, "clicked", G_CALLBACK(on_btn_click_ID), pGlobalData);
+    g_signal_connect(wButton_SRQ, "clicked", G_CALLBACK(on_btn_click_SRQ), pGlobalData);
 
     // 6. Display the window and all its child widgets
     gtk_window_present(GTK_WINDOW(wWindow_Application));
